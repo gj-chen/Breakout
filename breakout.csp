@@ -1,0 +1,891 @@
+	.EQU PUT_NUM,       	$E00      ; MINI_OS JSRS
+          	.EQU GET_NUM,       	$E01
+	.EQU GET_STR,	$E04
+          	.EQU PUT_STR,       	$E05
+          	.EQU PUT_NL,        	$E06
+          	.EQU PUT_NUM2,      	$E07
+          	.EQU PUT_CHR,       	$E08
+	.EQU ENABLE_AND_RESET,  	$C0
+	.EQU ENABLE_RESET_AND_START,  $D0
+	.EQU KBD_CNRL,  	$000
+	.EQU TIM_CNRL,      	$030
+
+          	.EQU KBD_STAT,  	$000
+          	.EQU KBD_DATA,  	$001
+          	.EQU KBD_FLUSH, 	$40
+	.equ CRT_XREG, $314
+	.equ CRT_YREG, $315
+;macros 
+.EQU top, 0 
+.EQU bottom, 13 
+.EQU max_right, 37 
+.EQU min_right, 1
+.EQU left, 4 
+.EQU right, 5 
+.EQU max_paddle_x, 33 
+.EQU quit, 'x' 
+.EQU start, ' '
+.EQU nokey, 'n' 
+.EQU verticle_line, '|' 
+.EQU horizontal_line, '-' 
+.EQU ball_chr, 'O' 
+
+.EQU rows, 14 
+.EQU columns, 38 
+
+
+
+.EQU @,$000
+
+;main function 
+LDS# $E00 
+CIE ;clear interrupts 
+
+;load # of lives 
+LDA# 3 ;lives = 3 
+STA lives  
+LDA# 0
+STA score
+LDA# 200
+STA TimeRemaining
+
+;load keyboard and timer 
+LDA# keyboardISR  
+STA $FF8 
+LDA# ENABLE_AND_RESET ;enable keyboard interupts
+OUTB KBD_CNRL 
+LDA# timerISR 
+STA $FFB 
+LDA# $0C      ;enable timer interupsts and clear ready bit 
+OUTB TIM_CNRL
+SIE 
+
+JSR showIntro
+JSR ClearCRT
+PSH timeRemaining
+PSH lives 
+PSH score 
+JSR ShowScore  ;clearCRT after showing score?
+ADS# 3
+
+
+MainLoop: NOP
+JMP MainLoop 
+
+
+
+lives: .word 
+score: .word 
+TimeRemaining: .word 
+PaddleX: .word ; leftmost character of paddle
+PaddleY: .word
+BallX: .word
+Bally: .word
+DeltaX: .word
+DeltaY: .word
+seed: .word 42
+
+
+;showIntro() 
+showIntro: 
+BGN# 0
+PSHX 
+PSHA  
+PSH# introLen1
+PSH# Intro1
+JSR PUT_STR 
+ADS# 2 
+PSH# introLen2
+PSH# Intro2
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+PSH# introLen3
+PSH# Intro3
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+PSH# introLen4
+PSH# Intro4
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+PSH# introLen5
+PSH# Intro5
+JSR PUT_STR 
+ADS# 2 
+PSH# introLen6
+PSH# Intro6
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+PSH# introLen7
+PSH# Intro7
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+PSH# introLen8
+PSH# Intro8
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+JSR PUT_NL
+PSH# introLen9
+PSH# Intro9
+JSR PUT_STR 
+ADS# 2 
+PSH# introLen10
+PSH# Intro10
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+PSH# introLen11
+PSH# Intro11
+JSR PUT_STR 
+ADS# 2 
+JSR PUT_NL
+LDA# KBD_FLUSH
+OUTB KBD_CNRL
+showIntroLoop: INB KBD_STAT 
+JEQ showIntroLoop
+INB KBD_DATA 
+CMA# ' '
+JNE showIntroLoop
+POPA
+POPX 
+FIN# 0 
+RTN 
+
+Intro1: .char 'Breakout Introduction: The game starts', introlen1
+Intro2: .char 'when the space bar is pressed.', introlen2
+Intro3: .char 'The game ends either when the user', introlen3
+Intro4: .char 'presses x or his lives or the timer', introlen4
+Intro5: .char 'reaches zero.  In this game the paddle', introlen5
+Intro6: .char 'can move up,down, right or left.  ', introlen6
+Intro7: .char 'Additionally the bell will sound when', introlen7
+Intro8: .char 'a block is destroyed.', introlen8
+Intro9: .char 'Game halts on game over.  To have game', introlen9
+Intro10: .char 'restart on game over, remove HLT at', introlen10
+Intro11: .char 'line 666 (Instruction $297).', introlen11
+
+
+
+ClearCRT: 	BGN#0
+	PSHA
+	PSHX
+	LDA#1
+	OUTB $315  ;Cursor X = 1
+	OUTB $316  ;Cursor Y = 1
+	PSH# toplen
+	PSH# topofscreen
+	JSR $E05
+	ADS# 2
+	LDX# 0
+ClearCRTLoop:	AOC# 13
+	JEQ ClearCRTCleared
+	PSH# sidelen
+	PSH# sides
+	JSR $E05
+	ADS# 2
+	JMP ClearCRTLoop
+ClearCRTCleared:LDA# '|'
+	OUTB $313
+	PSH# sidelen - 1
+	PSH# sides
+	JSR $E05
+	ADS#2
+	POPX
+	POPA
+	LDA# $100
+	OUTB $315   ;cursor off the screen
+	OUTB $316
+	FIN# 0
+	RTN
+
+
+topofscreen: .char '||____||____||____||____||____||____||', toplen
+sides: .char '|                                    |', sidelen
+
+.equ StartGamereferenceseed, 12
+.equ StartGAmeTimeRemaining, 11
+.equ StartGamePaddleX, 10    ;pass all by reference
+.equ StartGamePaddleY,9 
+.equ StartGameBallX, 8
+.equ StartGameBallY, 7
+.equ StartGameDeltaX, 6
+.equ StartGameDeltaY, 5
+.equ StartGameScore, 4
+.equ StartGamelives, 3
+.equ StartGameseed, 0    ;local var
+startgame:	BGN# 1
+	PSHA
+ 	PSHX
+	LDA tick
+	OUTW $031 ;set reload value register to one tick
+	LDA# $90  ;tell control register to start timer after loading counter
+	OUTB $30
+	LDA#14
+	STA* !StartGamePaddleY
+	LDA#13
+	STA* !StartGameBallY
+;	INW $034 ;get seed from timer 
+;	STA !StartGameseed
+;	PSH# !StartGameseed
+	PSH !StartGameReferenceSeed
+	PSH# 33
+	JSR random ; give random number 0-32
+	ADS#2
+	ADA#3      ;use random number 3-35
+	STA* !StartGameBallX
+	SBA#1
+	STA* !StartGamePaddleX
+;	PSH# !StartGameseed
+	PSH !StartGameReferenceSeed
+	PSH# 2
+	JSR random ;give random number 0 or 1
+	ADS#2
+	CMA#1
+	JEQ StartGameGoLeft
+	LDA#1  ; go right
+	STA* !StartGameDeltaX
+	JMP StartGame2
+StartGameGoLeft: LDA# 0
+	SBA#1
+	STA* !StartGameDeltaX
+StartGame2:	LDA# 0
+	SBA# 1
+	STA* !StartGameDeltaY
+	PSH* !StartGAmePaddleX
+	PSH* !StartGamePaddleY 
+	PSH# '-'
+	JSR ShowPaddle
+	ADS#3
+	LDA* !StartGAMETimeRemaining
+	CMA#0
+	JEQ StartNewGame
+	LDA* !StartGameLives
+	CMA#0
+	JNE StartGameDone ;if zero lives, go on
+StartNewGAme:	LDA#0
+	STA* !StartGameScore
+	LDA# 3
+	STA* !StartGameLives
+	LDA#200
+	STA* !StartGameTimeRemaining
+StartGameDone:	POPX
+	POPA
+	FIN#1
+	RTN
+
+.equ ShowpaddlePaddleX,5 ;pass by value
+.equ ShowPaddlePaddleY,4
+.equ ShowPaddleChar,3
+.equ ShowPaddlePaddlePos,0 ;local variable
+
+showPaddle:	BGN#1
+	PSHA
+	PSHX
+	LDA !showPaddlePAddleY    ; calculate position
+	SBA# 1
+	MUL# 38
+	ADA !ShowPaddlePaddleX
+	ADA# $FF
+	STA !ShowPAddlePAddlePos
+	LDA !ShowPaddleChar
+	LDX# $FFF
+ShowPaddleloop: AOC# 4
+	JEQ showpaddledone
+	LDA !showPaddleChar
+	OUTB* !ShowPaddlePaddlePos
+	LDA !ShowPaddlePAddlePos
+	ADA# 1
+	STA !ShowPaddlePaddlePos 
+	JMP ShowPaddleLoop
+ShowPaddleDone: POPX
+	POPA
+	FIN#1
+	RTN
+
+.equ MovePaddleKey,4 ; by value
+.equ MovePaddleX,3   ; by reference
+.equ MovePaddleY,2
+
+movePaddle:	BGN#0
+	PSHA
+	PSHX
+	PSH* !movePaddleX
+	PSH* !movePaddleY
+	PSH# ' '
+	JSR Showpaddle
+	ADS#3
+	LDA !movePAddleKey
+	CMA# 'H'
+	JEQ movePaddleup
+	CMA# 'P'
+	JEQ movePaddleDown
+	CMA# 'M'
+	JEQ MovePAddleRight
+	CMA# 'K'
+	JEQ MovePaddleLeft
+	JMP MovePaddleDoNotMove
+MovePaddleup:	LDA* !movePaddleY
+	CMA#8
+	JEQ MovePaddleDoNotMove
+	SBA#1
+	STA* !MovePaddleY
+	JMP MovePaddleDoNotMove
+MovePaddleDown:LDA* !movePaddleY
+	CMA#14
+	JEQ MovePaddleDoNotMove
+	ADA#1
+	STA* !movePaddleY
+	JMP movePaddleDoNotMove
+MovePAddleRight:LDA* !movePaddleX
+	CMA#34
+	JEQ MovePaddleDoNotMove
+	ADA# 1
+	STA* ! movePaddleX
+	JMP movePaddleDoNotMove
+movePAddleleft: LDA* !movePaddleX
+	CMA#2
+	JEQ movePAddleDoNotMove
+	SBA#1
+	STA* !movePaddleX
+	JMP movePaddleDoNotMove
+
+MovePaddleDoNotMove: PSH* !movePaddleX
+	PSH* !movePaddleY
+	PSH# '-'
+	JSR showPaddle
+	ADS#3
+
+	POPX
+	POPA
+	FIN#0
+	RTN
+
+.equ GetNewBallPositionBallX,6 ; pass by reference
+.equ GetNewBallPositionBallY,5
+.equ GetNewBallPositionDeltaX,4
+.equ GEtNewBallPositionDeltaY,3
+.equ GetNewBallPositionPos,0 ;;local
+
+GetNewBallPosition: BGN#1
+	PSHA
+	PSHX
+	LDA* !GetNewBallPositionBAllX
+	ADA* !GetNewBallPositionDeltaX
+	STA* !GetNewBallPositionBallX
+	LDA* !GetNewBallPositionBAllY
+	ADA* !GetNewBallPositionDeltaY
+	STA* !GetNewBallPositionBallY
+GetNewBallPositionretest: LDA* !GetNewBallPositionBallX
+	CMA#1
+	JEQ GetNewBallPositionIsonLeft
+	CMA#38
+	JEQ GetNewBallPositionISOnRight
+	LDA* !GetNewBallPositionBallY
+	CMA#0
+	JEQ GetNewBallPositionIsaboveTop
+	JMP GetNewBallPositionIsInMiddle
+GetNewBallPositionIsOnLeft: LDA* !GetNewBallPositionBallX
+	ADA#2
+	STA* !GetNewBallPositionBallX
+	LDA#1
+	STA* !GetNewBallPositionDeltaX
+	JMP GetNewBallPositionretest
+GetNewBallPositionIsOnRight:LDA* !GetNewBallPositionBallX
+	SBA# 2
+	STA* !GetNewBallPositionBallX
+	LDA#0
+	SBA#1
+	STA* !GetNewBallPositionDeltaX
+	JMP GetNewBallPositionretest
+GetNewBallPositionIsAboveTop: LDA* !GetNewBallPositionBallY
+	ADA#2
+	STA* !GetNewBallPositionBallY
+	LDA#1
+	STA* !GetNewBallPositionDeltaY
+	JMP GetNewBallPositionretest	
+GetNewBallPositionIsInMiddle: LDA* !GetNewBallPositionBallY ;calculate position
+	SBA#1
+	MUL# 38
+	ADA* !GetNewBallPositionBAllX
+	ADA# $FF
+	STA !GetNewBallPositionPos
+	INB* !GetNewBallPositionPos
+	CMA#'-'                     ;hit paddle.
+	JNE GetNewBallPositionIsDone
+	LDA* !GetNewBallPositionDeltaY
+	NEGA
+	STA* !GetNewBallPositionDeltaY
+	ADA* !GetNewBallPositionBallY
+	ADA* !GetNewBallPositionDeltaY
+	STA* !GetNewBallPositionBallY  ; ball reflects up or down of paddle based on new deltaY
+GetNewBallPositionIsDone:POPX
+	POPA
+	FIN#1
+	RTN
+.equ PlayTimeRemaining, 9
+.equ PlayScore, 8;pass by reference
+.equ PlayBallX,7
+.equ PlayBallY,6
+.equ PlayDeltaX, 5
+.equ PlayDeltaY,4
+.equ PlayLives,3
+.equ PlayPos,0   ;local
+
+Play:	BGN#1
+	PSHA
+	PSHX
+	LDA tick
+	OUTW $31   ;set reload value register to one tick
+	LDA* !PlayBallY	;calculate position
+	SBA# 1
+	MUL# 38
+	ADA* !PlayBallX
+	ADA# $FF
+	STA !PlayPos
+	INB* !PlayPos
+	CMA# 'O'
+	JNE PlaymoveBall
+	LDA# ' '
+	OUTB* !PlayPos
+PlayMoveBall:	PSH !PlayBallX
+	PSH !PlayBallY
+	PSH !PlayDeltaX
+	PSH !PlayDeltaY
+	JSR GetNewBallPosition
+	ADS#4
+	LDA* !PlayBallY
+	CMA# 1
+	JEQ PlayIsOnTop
+	CMA# 14
+	JEQ PlayIsOnBottom
+	JMP PlayPrintBall
+PlayIsOnTop:	LDA* ! PlayBallX  ;calculate position
+	ADA# $FF
+	STA !Playpos
+	INB* !PlayPos
+	CMA# ' '
+	JEQ PlayPrintBall
+	LDA# $06
+	OUTB $316    ;ring bell 
+	LDA* !PlayBallX
+	SBA# 2
+	DIV# 6
+	MUL# 6
+	ADA# $101         ;calculate position
+	STA !PlayPos     ;erase brick
+	LDX#5     
+PlayBreakBrick: LDA# ' '
+	OUTB* !PlayPos
+	LDA !PlayPos
+	ADA# 1
+	STA !PlayPos
+	SOJ PlayBreakBrick
+	LDA# 3
+	STA* !PlayBallY
+	LDA# 1
+	STA* !PlayDeltaY
+	LDA* !PlayScore   ;increment score
+	ADA# 1
+	STA* !PlayScore
+	LDA* !PlayScore   ;if score is 0 mod six, print score
+	MOD# 6
+	CMA#0
+	JNE PlayPrintBall
+	PSH* !PlayTimeREmaining
+	PSH* !PlayLives
+	PSH* !PlayScore
+	JSR ShowScore
+	ADS# 3
+	JMP PlayDone
+PlayIsOnBottom: LDA* !PlayLives   ; if on bottom, one less life and 
+	SBA# 1
+	STA* !PlayLives
+	PSH* !PlayTimeRemaining
+	PSH* !PlayLives
+	PSH* !PlayScore
+	JSR ShowScore
+	ADS# 3
+	JMP PlayPrintBall
+PlayPrintBall:LDA* !PlayBallY ; Calculate Pos
+	SBA# 1
+	MUL# 38
+	ADA* !PlayBallX
+	ADA# $FF
+	STA !PlayPos
+	INB* !PlayPos
+	CMA# ' '
+	JNE PlayDone
+	LDA# 'O'
+	OUTB* !PlayPos
+PlayDone:	LDA* !PlayTimeRemaining
+	SBA#1
+	STA* !PlayTimeRemaining
+	LDA spaces
+	OUTW 148+$FF
+	LDA* !PlayTimeRemaining ;print out time remaining
+	SHRA
+	MOD# 10
+	ADA# '0'
+	OUTB 150 + $FF
+	LDA* !PlayTimeRemaining
+	SHRA
+	DIV#10
+	MOD#10
+	ADA# '0'
+	OUTB 149 + $FF
+	LDA* !PlayTimeRemaining
+	SHRA
+	DIV#100
+	ADA# '0'
+	OUTB 148 + $FF
+	LDA* !PlayTimeRemaining
+	CMA#0
+	JNE LeavePlay
+	PSH* !PlayTimeRemaining
+	PSH* !PlayLives
+	PSH* !PlayScore
+	JSR ShowScore
+	ADS# 3
+LeavePlay:	LDA# $90   ;enable interupts and start timer
+	OUTB $30   ;timer control register
+	POPX
+	POPA
+	FIN#1
+	RTN
+
+spaces: .word '   '
+
+
+
+
+;int random2(int max) 
+
+;.EQU randomSeed, 1 
+;.EQU randomMax, 2 
+
+;random: BGN# 0 
+;LDA* ! randomSeed 
+;MUL# 2779 
+;ADA# 1997 
+;MOD# 2048 
+;STA* !  randomSeed 
+;INC* ! randomMax 
+;MOD ! randomMax 
+;FIN# 0 
+;RTN 
+
+.equ randomSeed, 3 ;pass by reference
+.equ randomMax, 2  ;pass by value
+
+random: BGN# 0 
+LDA* ! randomSeed 
+MUL# 2779 
+ADA# 1997 
+MOD# 2047  ;changed to odd number:  If is even, even seed always gives odd value 
+STA* ! randomSeed  
+MOD ! randomMax 
+FIN# 0 
+RTN 
+
+
+
+;showScore(); 
+;(JSR to showScore after showIntro) 
+
+
+.equ showscoreTimeremaining, 4
+.EQU showScoreLives, 3 ;by value
+.EQU showScoreScore, 2 
+
+showScore: 
+BGN# 0 
+PSHA 
+LDA# $40
+OUTB $000  ;disable interupts from keyboard.  KEyboard interupts reenabled in TimerISR
+LDA !showScorelives
+CMA# 0
+JEQ showscoreclear
+LDA !showScoreTimeRemaining
+CMA# 0
+JEQ showscoreclear
+LDA !showScoreScore
+CMA# 0
+JEQ showScoreContinue
+MOD#6
+CMA#0
+JEQ ShowScoreClear
+JMP ShowScoreContinue
+ShowScoreclear: JSR ClearCRT
+Showscorecontinue: LDA# 3
+OUTB CRT_XREG  ; cursor X = 3
+LDA# 3
+OUTB $315      ;cursor Y = 3 
+PSH# lenScore 
+PSH# showScores 
+JSR PUT_STR 
+ADS# 2 
+LDA !showScoreScore 
+JSR PUT_NUM2 
+LDA# 3
+OUTB CRT_XREG 
+LDA# 4        
+OUTB CRT_YREG 
+PSH# lenLive 
+PSH# showLive 
+JSR PUT_STR 
+ADS# 2
+LDA !showScoreLives 
+JSR PUT_NUM2 
+CMA# 0 
+JEQ ShowScoreGameOver  ; continues the game 
+LDA !ShowScoreScore
+CMA#0
+JEQ ShowScoreContinue2
+MOD#6
+CMA#0
+JEQ showScoreNextLevel
+showscoreCheckTime: LDA !SHowScoreTimeRemaining
+CMA#0
+JEQ ShowScoreGameOVer
+CMA#200
+JEQ ShowScoreNewGame
+JMP ShowScoreContinue2 
+
+ShowScoreGameover: LDA# 10 
+OUTB CRT_XREG 
+LDA# 8 
+OUTB CRT_YREG 
+PSH# lenGame 
+PSH# gameOver 
+JSR PUT_STR 
+ADS#2 
+HLT     ; halt if stop on game over, remove to have start new game
+JMP ShowScorecontinue2
+
+ShowScoreNewGame: LDA# 10 
+OUTB CRT_XREG 
+LDA# 8 
+OUTB CRT_YREG 
+PSH# Newlen 
+PSH# NewGame 
+JSR PUT_STR 
+ADS#2 
+JMP Showscorecontinue2
+
+ShowScoreNextlevel:
+LDA# 10 
+OUTB CRT_XREG 
+LDA# 8 
+OUTB CRT_YREG 
+PSH# lennextlevel 
+PSH# NextLevel
+JSR PUT_STR 
+ADS#2 
+
+ShowScoreContinue2: LDA Pause_after_loss
+outw $031    ; pause_after_loss to reload value register
+LDA# $D0
+outb $30    ;enable timer interupts, clear ready bit, load reload value register, and start timer
+LDA# 100 
+OUTB CRT_XREG 
+OUTB CRT_YREG 
+POPA 
+FIN# 0 
+RTN 
+
+
+
+showScores: .char 'Score: ', lenScore 
+showLive: .char 'Lives: ', lenLive 
+gameOver: .char 'Game Over', lenGame 
+NextLevel: .char 'Next Level', lennextlevel
+NewGame: .char 'New Game', Newlen
+
+KeyboardISR: 	PSHA
+	PSHX
+	INB $000
+	AND# $80
+	CMA# $80
+	JNE KEyISRFlushANdLeave
+	INB $001 ;READ FROM keyboard
+	CMA# 'x'
+	JEQ keyISRstop
+	CMA# $1B              ; "ESC" key 
+	JNE keyISRFlushandLeave
+	INB $001
+	PSHA
+	PSH# PaddleX
+	PSH# PaddleY
+	JSR movePaddle
+	ADS#3
+	JMP KeyISRFlushandLeave
+keyISRstop:	HLT
+KeyISRFlushAndLeave: LDA# $C0
+	OUTB $000 ;keyboard control register
+
+	POPX
+	POPA
+	IRTN
+
+
+.EQU CRT_BUFFER, 100 
+;.EQU Countdown_Timer, 50000 
+Pause_after_loss: .word 12500
+tick:  .word 1250
+.EQU TIM_RELOAD, $031 
+.equ CRT_CNTL, $316
+
+
+TimerISR:	PSHA
+	PSHX
+	LDA# $C0  ; allow interupts, clear ready bit
+	OUTB $30   ;control register
+	INW $031 ;read in reload value register
+	CMA Pause_after_loss
+	JEQ TImerISRLostGame
+	CMA tick
+	JEQ TimerISRcontinuePlaying
+ 	JNE TIMERISRERROR
+TImerISRLostGame: LDA# ' '
+	LDX# 78    ;position of score
+TimerISRerasescore: AOC# 88
+	JEQ TimerISReraseLives
+	OUTB+ $FF
+	JMP TimerISRerasescore
+
+TimerISReraselives: LDX# 116 ; position of lives
+TImerISReraselivesloop: AOC# 125
+	JEQ TimerISRerasepaddle
+;	JEQ TimerISRdoneErasing
+	OUTB+ $FF
+	JMP TimerISReraselivesloop
+TimerISRerasePaddle: LDA PaddleY
+	SBA# 1
+	MUL# 38
+	ADA PaddleX
+	ADA# $FF
+	STA PaddlePosition
+	LDX#0
+	LDA# ' '
+TimerISRerasePAddleloop: AOC#5
+	JEQ TImerISREraseGameOver
+	OUTB* PaddlePosition
+	LDA PaddlePosition
+	ADA# 1
+	STA PaddlePosition
+	LDA# ' '
+	JMP TimerISRerasePaddleLoop
+TimerISREraseGameOver: LDA#10
+	OUTB CRT_XREG
+	LDA#8
+	OUTB CRT_YREG
+	LDX#9
+EraseGameOverLoop: LDA#' '
+	OUTB $317
+	SOJ EraseGameOverLoop
+	LDA#$100
+	OUTB CRT_XREG
+	LDA#$100
+	OUTB CRT_YREG
+	JMP TIMERISRDONEERASING
+
+
+
+
+
+
+TimerISRdoneerasing:	LDA BallY ;calcualte position
+	SBA# 1
+	MUL# 38
+	ADA BallX
+	ADA# $FF
+	STA BallPosition   ;erase Ball
+	LDA# ' '
+	OUTB* BallPosition
+	PSH# Seed
+	PSH# TImeRemaining
+	PSH# PaddleX    
+	PSH# PAddleY
+	PSH# BallX
+	PSH# BAllY
+	PSH# DeltaX
+	PSH# DeltaY
+	PSH# Score
+	PSH# Lives
+	JSR StartGame
+	ADS# 10
+	LDA# $C0
+	OUTB $000 ;flush keyboard buffer and reenable keyboard interupts--keyboard interupsts disabled in showscore
+;	LDA# $80 ;reenable interupts after flushing buffer.
+;	OUTB $00
+	JMP TimerISRdone
+TImerISRContinuePlaying: PSH#TimeRemaining
+	 PSH# score
+	PSH# ballX
+	PSH# BallY
+	PSH# DeltaX
+	PSH# DeltaY
+	PSH# Lives
+	JSR play
+	ADS# 7
+	JMP TimerISRdone		
+
+		
+TIMERISRERROR: HLT
+TimerISRdone:	POPX
+	POPA
+	IRTN
+	
+BAllPosition: .word 
+PaddlePosition: .word
+
+;timerISR: 
+;PSHA 
+;INW TIM_RELOAD 
+;LDA lives 
+;CMA# 0 
+;JNE timerISR2 
+;
+;;if lives - 0, end game (go to gameover) 
+;
+;timerISR2: 
+;LDA# Countdown_Timer ;start countdown 
+;OUTW TIM_RELOAD 
+;OUTB CRT_CNTL 
+;LDA# '3'
+;OUTB CRT_BUFFER + 17 
+;LDA# 100 
+;OUTB CRT_XREG 
+;OUTB CRT_YREG 
+;JMP timerIsDone 
+;;
+;
+;timerISR3: 
+;CMA Countdown_Timer ; decrement countdown ;
+;INB CRT_BUFFER + 17 
+;SBA# 1 
+;CMA# 0 ;if countdown = 0, end game 
+;JGE showScore
+;OUTB CRT_BUFFER + 17 
+;LDA# 100 
+;OUTB CRT_XREG 
+;OUTB CRT_YREG 
+;JMP timerIsDone 
+
+;timerIsDone: 
+;LDA# ENABLE_RESET_AND_START ;
+;OUTB TIM_CNTL 
+;POPA 
+;IRTN 
+
+
+
+
+
+
+
+
